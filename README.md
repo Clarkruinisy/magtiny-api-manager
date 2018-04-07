@@ -1,4 +1,4 @@
-# magtiny-api-server
+# magtiny-api-manager
 
 Author: Clark Yanwei Zhao <zhaoyanwei@shinetechchina.com>
 
