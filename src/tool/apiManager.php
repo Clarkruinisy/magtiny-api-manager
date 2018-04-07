@@ -12,105 +12,173 @@ class apiManager
 
 	public function __construct ($config = [])
 	{
-		$this->config = $config;
+		$defaultConfig = render::config(__DIR__."/../config.php");
+		$this->config = array_merge($defaultConfig, $config);
+	}
+
+	private function render ($code = 1000, $success = false, $data = null)
+	{
+		return [
+			"success" => $success,
+			"code" => $code,
+			"message" => $this->config["messages"][$code],
+			"data" => $data,
+		];
 	}
 
 	public function start ()
 	{
-		$method = globals::get("request");
-		if (!method_exists($this, $method)) {
-			return render::api(1001);
+		if (!globals::input("secret")) {
+			return $this->render(1001);
 		}
-		return $this->{$method}();
+		if (globals::input("secret") !== $this->config["secret"]) {
+			return $this->render(1002);
+		}
+		$method = globals::input("request");
+		if (!method_exists($this, $method)) {
+			return $this->render(1003);
+		}
+		return call_user_func_array([$this, $method], []);
 	}
 
 	public function connect ()
 	{
-		if (globals::get("secret") !== $this->config["secret"]) {
-			return render::api(1002);
-		}
-		return render::api(1003, true);
+		return $this->render(1009, true);
 	}
 
-	public function parseAPI ()
+	public function manager ()
 	{
-		$connect = $this->connect();
-		if (!$connect["success"]) {
-			return $connect;
+		if (!$this->config["instanceDir"]) {
+			return $this->render(1004);
 		}
-		$files = scandir($this->config["dir"]);
+		if (!is_dir($this->config["instanceDir"])) {
+			return $this->render(1005);
+		}
+		if (!$this->config["instanceUrl"]) {
+			return $this->render(1006);
+		}
+		$files = scandir($this->config["instanceDir"]);
+		if (false === $files) {
+			return $this->render(1007);
+		}
 		$servers = [];
 		$k = -1;
 		foreach ($files as $file) {
 			if ("." !== $file and ".." !== $file and $controller = lcfirst(strstr($file, ".php", true))){
 				++$k;
-				$handler = fopen($this->config["dir"]."/".$file, "r");
-				if (false === $handler) {
-					return render::api(1004);
+				if (!is_readable($this->config["instanceDir"]."/".$file)) {
+					return $this->render(1008);
 				}
+				$handler = fopen($this->config["instanceDir"]."/".$file, "r");
 				$servers[$k] = [
-					"file" => $file,
+					"file" => $this->config["instanceDir"]."/".$file,
+					"ctime" => filectime($this->config["instanceDir"]."/".$file),
 					"controller" => $controller,
+					"controllerName" => $controller,
 					"actions" => []
 				];
 				$j = -1;
-				while (false !== ($content = fgets($handler))) {
-					if (0 === strpos(trim($content), '/**')) {
-						while (false !== ($innerContent = fgets($handler))) {
-							if (0 === strpos(trim($innerContent), '**/')) {
-								++$j;
-								break;
+				$lineNumber = 0;
+				while (false !== ($content = fgets($handler, 4096))) {
+					++ $lineNumber;
+					if (0 === strpos(trim($content), "/**")) {
+						$innerContent = fgets($handler, 4096);
+						++ $lineNumber;
+						if (strpos(trim($innerContent), "@magtiny")) {
+							$contentArray = explode("@magtiny", $innerContent);
+							if (2 !== count($contentArray)) {
+								$data = $servers[$k]["file"]."(".$lineNumber.")";
+								return $this->render(1012, false, $data);
 							}
-							if (strpos($innerContent, "@controller")) {
-								$servers[$k]["controllerName"] = trim(explode("@controller", $innerContent)[1]);
+							$value = trim($contentArray[1]);
+							if (!$value) {
+								$data = $servers[$k]["file"]."(".$lineNumber.")";
+								return $this->render(1012, false, $data);
 							}
-							if (strpos($innerContent, "@path")) {
-								$servers[$k]["controllerPath"] = trim(explode("@path", $innerContent)[1]);
+							if (-1 === $j) {
+								$servers[$k]["controllerName"] = $value;
+							}else{
+								$servers[$k]["actions"][$j]["actionName"] = $value;
 							}
-							if (strpos($innerContent, "@action")) {
-								$servers[$k]["actions"][$j]["actionName"] = trim(explode("@action", $innerContent)[1]);
-							}
-							if (strpos($innerContent, "@name")) {
-								$servers[$k]["actions"][$j]["actionPath"] = trim(explode("@name", $innerContent)[1]);
-							}
-							if (strpos($innerContent, "@method")) {
-								$servers[$k]["actions"][$j]["method"] = trim(explode("@method", $innerContent)[1]);
-							}
-							if (strpos($innerContent, "@label")) {
-								$servers[$k]["actions"][$j]["label"] = trim(explode("@label", $innerContent)[1]);
-							}
-							if (strpos($innerContent, "@param")) {
-								$paramInfo = preg_split("/[\s]+/", trim(explode("@param", $innerContent)[1]));
-								if (0 === strpos($paramInfo[0], "*")) {
-									$key = substr($paramInfo[0], 1);
-									$require = true;
-								}else{
-									$key = $paramInfo[0];
-									$require = false;
+							while (false !== ($innerContent = fgets($handler, 4096))) {
+								++ $lineNumber;
+								if (0 === strpos(trim($innerContent), "**/")) {
+									if (-1 === $j and isset($servers[$k]["actions"][$j])) {
+										$data = $servers[$k]["file"];
+										return $this->render(1014, false, $data);
+									}
+									if (-1 === $j or isset($servers[$k]["actions"][$j])) {
+										++ $j;
+									}
+									break;
 								}
-								$servers[$k]["actions"][$j]["param"][] = [
-									"key" => $key,
-									"type" => "param",
-									"require" => $require,
-									"default" => $paramInfo[1],
-									"method" => isset($paramInfo[2]) ? $paramInfo[2] : $servers[$k]["actions"][$j]["method"]
-								];
-							}
-							if (strpos($innerContent, "@file")) {
-								$paramInfo = preg_split("/[\s]+/", trim(explode("@file", $innerContent)[1]));
-								if (0 === strpos($paramInfo[0], "*")) {
-									$key = substr($paramInfo[0], 1);
-									$require = true;
-								}else{
-									$key = $paramInfo[0];
-									$require = false;
+								foreach ($this->config["parseFields"] as $field) {
+									if (strpos($innerContent, "@".$field)) {
+										$contentArray = explode("@".$field, $innerContent);
+										if (2 !== count($contentArray) and "file" !== $field) {
+											$data = $servers[$k]["file"]."(".$lineNumber.")";
+											return $this->render(1012, false, $data);
+										}
+										$value = trim($contentArray[1]);
+										if (!$value) {
+											$data = $servers[$k]["file"]."(".$lineNumber.")";
+											return $this->render(1012, false, $data);
+										}
+										switch ($field) {
+											case "controller":
+												$servers[$k][$field] = $value;
+												break;
+											case "action":
+											case "method":
+											case "label":
+												$servers[$k]["actions"][$j][$field] = $value;
+												break;
+											case "param":
+											case "file":
+												preg_match("/[\s]+/", $value, $matches, PREG_OFFSET_CAPTURE);
+												$param = ["type" => $field];
+												if (isset($matches[0][1])) {
+													$sepPos = $matches[0][1];
+													$param["default"] = trim(substr($value, $sepPos));
+													$paramKeyInfo = substr($value, 0, $sepPos);
+												}else{
+													$param["default"] = "";
+													$paramKeyInfo = $value;
+												}
+												
+												if (strpos($paramKeyInfo, ".")) {
+													$paramArray = explode(".", $paramKeyInfo);
+													$param["key"] = current($paramArray);
+													while (false !== ($next = next($paramArray))) {
+														switch ($next) {
+															case "*":
+																$param["required"] = true;
+																break;
+															case "get":
+															case "json":
+																if ("file" === $field) {
+																	$data = $servers[$k]["file"]."(".$lineNumber.")";
+																	return $this->render(1012, false, $data);
+																}
+																$param["method"] = $next;
+																break;
+															default:
+																$data = $servers[$k]["file"]."(".$lineNumber.")";
+																return $this->render(1012, false, $data);
+														}
+													}
+												}else{
+													$param["key"] = $paramKeyInfo;
+													$param["required"] = false;
+												}
+												$servers[$k]["actions"][$j]["param"][] = $param;
+												break;
+											default:
+												return $this->render(1013);
+										}
+										break;
+									}
 								}
-								$servers[$k]["actions"][$j]["param"][] = [
-									"key" => $key,
-									"type" => "file",
-									"require" => $require,
-									"default" => isset($paramInfo[1]) ? $paramInfo[1] : ""
-								];
 							}
 						}
 					}
@@ -119,11 +187,20 @@ class apiManager
 		}
 		$data = [
 			"servers" => $servers,
-			"url" => $this->config["url"],
-			"codeMap" => $this->config["codeMap"],
+			"time" => time(),
+			"instanceUrl" => $this->config["instanceUrl"],
 			"sessionUse" => $this->config["sessionUse"],
 			"sessionKey" => $this->config["sessionKey"],
 		];
-		return render::api(1005, true, $data);
+		return $this->render(1010, true, $data);
+	}
+
+	public function document ()
+	{
+		$data = [
+			"document" => $this->config["document"],
+		];
+		return $this->render(1011, true, $data);
 	}
 }
+
