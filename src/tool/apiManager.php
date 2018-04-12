@@ -102,7 +102,7 @@ class apiManager
 							}
 							while (false !== ($innerContent = fgets($handler, 4096))) {
 								++ $lineNumber;
-								if (0 === strpos(trim($innerContent), "**/")) {
+								if (0 === strpos(trim($innerContent), "*/")) {
 									if (-1 === $j and isset($servers[$k]["actions"][$j])) {
 										$data = $servers[$k]["file"];
 										return $this->render(1014, false, $data);
