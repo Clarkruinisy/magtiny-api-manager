@@ -128,6 +128,8 @@ class apiManager
 											case "controller":
 												$servers[$k][$field] = $value;
 												break;
+											case "time":
+												$server[$k]["ctime"] = strtotime($value);
 											case "action":
 											case "method":
 											case "label":
