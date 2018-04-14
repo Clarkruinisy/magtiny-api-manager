@@ -64,7 +64,7 @@ class apiManager
 		$servers = [];
 		$k = -1;
 		foreach ($files as $file) {
-			if ("." !== $file and ".." !== $file and $controller = lcfirst(strstr($file, ".php", true))){
+			if ("." !== $file and ".." !== $file and $controller = lcfirst(strstr($file, ".".$this->config["fileExtension"], true))){
 				++$k;
 				if (!is_readable($this->config["instanceDir"]."/".$file)) {
 					return $this->render(1008);
@@ -84,8 +84,8 @@ class apiManager
 					if (0 === strpos(trim($content), "/**")) {
 						$innerContent = fgets($handler, 4096);
 						++ $lineNumber;
-						if (strpos(trim($innerContent), "@magtiny")) {
-							$contentArray = explode("@magtiny", $innerContent);
+						if (strpos(trim($innerContent), "@".$this->config["markField"])) {
+							$contentArray = explode("@".$this->config["markField"], $innerContent);
 							if (2 !== count($contentArray)) {
 								$data = $servers[$k]["file"]."(".$lineNumber.")";
 								return $this->render(1012, false, $data);
@@ -107,7 +107,16 @@ class apiManager
 										$data = $servers[$k]["file"];
 										return $this->render(1014, false, $data);
 									}
-									if (-1 === $j or isset($servers[$k]["actions"][$j])) {
+									if (-1 === $j) {
+										++ $j;
+									}
+									if (isset($servers[$k]["actions"][$j])) {
+										if (!isset($servers[$k]["actions"][$j]["method"])) {
+											$servers[$k]["actions"][$j]["method"] = $this->config["defaultMethod"];
+										}
+										if (!isset($servers[$k]["actions"][$j]["label"])) {
+											$servers[$k]["actions"][$j]["label"] = $this->config["defaultLabel"];
+										}
 										++ $j;
 									}
 									break;
@@ -126,10 +135,9 @@ class apiManager
 										}
 										switch ($field) {
 											case "controller":
+											case "ctime":
 												$servers[$k][$field] = $value;
 												break;
-											case "time":
-												$server[$k]["ctime"] = strtotime($value);
 											case "action":
 											case "method":
 											case "label":
