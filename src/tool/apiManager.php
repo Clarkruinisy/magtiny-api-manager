@@ -135,8 +135,10 @@ class apiManager
 										}
 										switch ($field) {
 											case "controller":
-											case "ctime":
 												$servers[$k][$field] = $value;
+												break;
+											case "ctime":
+												$servers[$k][$field] = strtotime($value);
 												break;
 											case "action":
 											case "method":
